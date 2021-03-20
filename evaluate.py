@@ -47,8 +47,29 @@ def CE(input,target):
     assert input.shape==target.shape,'the dimensions of prediction and target do not match/BCE'
     return F.binary_cross_entropy(input,target)
 
+class L2(nn.Module):
+    def __init__(self):
+        super().__init__()
+    def forward(self,prediction,target,smooth=0.00001):
+        assert prediction.shape == target.shape, 'the dimensions of prediction and target do not match/iou'
+        batch_size = prediction.shape[0]
+        pred=prediction.view(batch_size,-1)
+        target=target.view(batch_size,-1)
+        l2=torch.mean((pred-target).pow(2),dim=1)
+        l2=torch.mean(l2)
+        return l2
 # target=torch.eye(3)
 # prediction=target
 #
 # bceloss=CE(prediction,target)
 # print(bceloss)
+
+# import matplotlib.pyplot as plt
+# for i in range(prediction.shape[0]):
+#     pred=transforms.ToPILImage()(prediction[i])
+#     msk=transforms.ToPILImage()(mask[i])
+#     plt.subplot(1,2,1)
+#     plt.imshow(pred)
+#     plt.subplot(1,2,2)
+#     plt.imshow(msk)
+#     plt.show()

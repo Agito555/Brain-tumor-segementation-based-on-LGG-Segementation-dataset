@@ -46,6 +46,20 @@ class Decoder_block(nn.Module):
         x_mid=torch.cat([x,down_featuremap],dim=1)
         return self.block(x_mid)
 
+class Decoder_block_interpolation(nn.Module):
+    def __init__(self,in_channel,down_channel,out_channel):
+        super().__init__()
+        assert in_channel>1,'in_channel//2 is 0 /decoder_block'
+        self.block=nn.Sequential(
+            Conv_block_2D(in_channel+down_channel,out_channel),
+            Conv_block_2D(out_channel,out_channel),
+        )
+    def forward(self,x,down_featuremap):
+        _,channels,height,width=down_featuremap.size()
+        x=F.interpolate(x, size=(height,width), mode='bilinear')
+        x_mid=torch.cat([x,down_featuremap],dim=1)
+        return self.block(x_mid)
+
 class Unet(nn.Module):
     def __init__(self,in_channel,out_channel,filter:list):
         super().__init__()
@@ -62,7 +76,13 @@ class Unet(nn.Module):
         self.decoder2 = Decoder_block(filter[3], filter[2], filter[2])
         self.decoder3 = Decoder_block(filter[2], filter[1], filter[1])
         self.decoder4 = Decoder_block(filter[1], filter[0], filter[0])
-        self.out=Conv_block_2D(filter[0],out_channel)
+        self.vice_decoder1=Decoder_block_interpolation(filter[4],filter[3],filter[3])
+        self.vice_decoder2 = Decoder_block_interpolation(filter[3], filter[2], filter[2])
+        self.vice_decoder3 = Decoder_block_interpolation(filter[2], filter[1], filter[1])
+        self.vice_decoder4 = Decoder_block_interpolation(filter[1], filter[0], filter[0])
+
+        self.out=nn.Conv2d(filter[0],out_channel,kernel_size=1)
+        self.out2 = nn.Conv2d(filter[0], out_channel, kernel_size=1)
 
     def forward(self,x):
         x,out1=self.encoder1(x)     #x: the dimension/2 , out1: the same dimension
@@ -70,19 +90,32 @@ class Unet(nn.Module):
         x, out3 = self.encoder3(x)
         x, out4 = self.encoder4(x)
         x=self.encoder5(x)
-        x=self.decoder1(x,out4)
-        x = self.decoder2(x, out3)
-        x = self.decoder3(x, out2)
-        x = self.decoder4(x, out1)
-        x=self.out(x)
-        x = torch.sigmoid(x)
-        return x
+        if self.training:
+            x1 = self.vice_decoder1(x, out4)
+            x=self.decoder1(x,out4)
 
+            x = self.decoder2(x, out3)
+            x1 = self.vice_decoder2(x1, out3)
 
-filter=[64,128,256,512,1024]
-unet=Unet(3,1,filter)
-input=torch.randn(2,3,256,256)
-output=unet(input)
-print(output.size())
+            x = self.decoder3(x, out2)
+            x1 = self.vice_decoder3(x1, out2)
 
+            x = self.decoder4(x, out1)
+            x1 = self.vice_decoder4(x1, out1)
+
+            x=self.out(x)
+            x1 = self.out2(x1)
+
+            x = torch.sigmoid(x)
+            x1=torch.sigmoid(x1)
+
+            return x,x1
+        else:
+            x = self.decoder1(x, out4)
+            x = self.decoder2(x, out3)
+            x = self.decoder3(x, out2)
+            x = self.decoder4(x, out1)
+            x = self.out(x)
+            x = torch.sigmoid(x)
+            return x
 
